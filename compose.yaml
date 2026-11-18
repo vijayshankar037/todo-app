@@ -1,0 +1,35 @@
+services:
+  db:
+    image: postgres:14
+    environment:
+      POSTGRES_DB: todo_app_development
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: todoapp-local-password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d todo_app_development"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  web:
+    build: .
+    command: sh -c "bundle exec rails db:prepare && bundle exec rails server -b 0.0.0.0"
+    environment:
+      DATABASE_URL: postgresql://postgres:todoapp-local-password@db:5432/todo_app_development
+      SECRET_KEY_BASE: practice-only-secret-key-base-not-for-production-123456
+      FORCE_SSL: "false"
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "ruby", "-rsocket", "-e", "TCPSocket.new('127.0.0.1', 3000).close"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:

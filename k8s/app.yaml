@@ -1,0 +1,74 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: todo-app-secrets
+type: Opaque
+stringData:
+  db-password: todoapp-local-password
+  secret-key-base: practice-only-secret-key-base-not-for-production-123456
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: todo-app
+spec:
+  type: ClusterIP
+  selector:
+    app: todo-app
+  ports:
+    - name: http
+      port: 3000
+      targetPort: 3000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: todo-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: todo-app
+  template:
+    metadata:
+      labels:
+        app: todo-app
+    spec:
+      initContainers:
+        - name: wait-for-postgres
+          image: todo-app:local
+          command:
+            - sh
+            - -c
+            - until pg_isready -h postgres -p 5432 -U postgres; do echo "waiting for postgres"; sleep 2; done
+      containers:
+        - name: web
+          image: todo-app:local
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3000
+          env:
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: todo-app-secrets
+                  key: db-password
+            - name: DATABASE_URL
+              value: postgresql://postgres:$(DB_PASSWORD)@postgres:5432/todo_app_production
+            - name: SECRET_KEY_BASE
+              valueFrom:
+                secretKeyRef:
+                  name: todo-app-secrets
+                  key: secret-key-base
+            - name: FORCE_SSL
+              value: "false"
+          readinessProbe:
+            tcpSocket:
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: 3000
+            initialDelaySeconds: 30
+            periodSeconds: 10

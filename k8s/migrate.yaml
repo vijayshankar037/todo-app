@@ -1,0 +1,39 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: todo-app-migrate
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        app: todo-app-migrate
+    spec:
+      restartPolicy: OnFailure
+      initContainers:
+        - name: wait-for-postgres
+          image: todo-app:local
+          command:
+            - sh
+            - -c
+            - until pg_isready -h postgres -p 5432 -U postgres; do echo "waiting for postgres"; sleep 2; done
+      containers:
+        - name: migrate
+          image: todo-app:local
+          imagePullPolicy: IfNotPresent
+          command: ["bundle", "exec", "rails", "db:prepare"]
+          env:
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: todo-app-secrets
+                  key: db-password
+            - name: DATABASE_URL
+              value: postgresql://postgres:$(DB_PASSWORD)@postgres:5432/todo_app_production
+            - name: SECRET_KEY_BASE
+              valueFrom:
+                secretKeyRef:
+                  name: todo-app-secrets
+                  key: secret-key-base
+            - name: FORCE_SSL
+              value: "false"
